@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Configuración y secretos locales
+server/config.json
+server/.flask_secret
+
+# Datos del caso (evidencia, informes, base)
+server/*.db
+server/evidence/
+server/reports/
+server/uploads/
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.vscode/

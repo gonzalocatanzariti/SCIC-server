@@ -1,0 +1,6 @@
+flask
+flask-cors
+reportlab
+pillow
+ldap3
+opentimestamps

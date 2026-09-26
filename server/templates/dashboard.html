@@ -1,0 +1,2109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Evidencias</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/quill.snow.css') }}">
+    <style>
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 24px 12px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .modal-overlay.flex {
+            display: flex;
+        }
+        .modal-panel {
+            position: relative;
+            max-height: calc(100vh - 48px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            margin: 0 auto 24px;
+        }
+        .modal-handle {
+            cursor: move;
+            user-select: none;
+        }
+        .evidence-card {
+            transition: all 0.3s ease;
+        }
+        .evidence-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .evidence-card.sortable-ghost {
+            opacity: 0.4;
+            background: #e0e7ff;
+        }
+        .evidence-card.sortable-drag {
+            cursor: grabbing;
+        }
+        .annotation-content p {
+            margin: 0.25rem 0;
+        }
+        .annotation-content ul, .annotation-content ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+        .annotation-content strong {
+            font-weight: 600;
+        }
+        .annotation-content em {
+            font-style: italic;
+        }
+        .annotation-content b {
+            font-weight: 600;
+        }
+        .annotation-content i {
+            font-style: italic;
+        }
+        .annotation-content u {
+            text-decoration: underline;
+        }
+        .ql-font-arial { font-family: Arial, sans-serif; }
+        .ql-font-calibri { font-family: Calibri, sans-serif; }
+        .ql-font-times-new-roman { font-family: "Times New Roman", serif; }
+        .ql-font-georgia { font-family: Georgia, serif; }
+        .ql-font-verdana { font-family: Verdana, sans-serif; }
+        .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="arial"]::before,
+        .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="arial"]::before { content: "Arial"; }
+        .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="calibri"]::before,
+        .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="calibri"]::before { content: "Calibri"; }
+        .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="times-new-roman"]::before,
+        .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="times-new-roman"]::before { content: "Times New Roman"; }
+        .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="georgia"]::before,
+        .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="georgia"]::before { content: "Georgia"; }
+        .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="verdana"]::before,
+        .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="verdana"]::before { content: "Verdana"; }
+        .annotation-content font[color] {
+            /* Los colores se aplican con el atributo color */
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+            <div class="container mx-auto px-6 py-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-3xl font-bold" id="reportTitle">Reporte de Evidencias</h1>
+                        <p class="text-blue-100 mt-1" id="caseIngestHint">Cada caso tiene su API Key. Las capturas de la extension entran al caso de esa key.</p>
+                        <label class="text-xs text-blue-100 mt-2 inline-flex items-center gap-2">
+                            Zona horaria de reportes
+                            <select id="timezoneSelect" onchange="changeTimezone()" class="text-gray-800 text-sm rounded px-2 py-1">
+                            </select>
+                        </label>
+                    </div>
+                    <div class="flex gap-3">
+                        <button type="button" onclick="showSessionsModal()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-600 transition">
+                            📁 Casos
+                        </button>
+                        <button type="button" onclick="showApiKeysModal()" class="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 transition">
+                            🔑 API Keys
+                        </button>
+                        {% if is_admin %}
+                        <button type="button" onclick="showUsersModal()" class="bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold hover:bg-slate-900 transition">
+                            👤 Usuarios
+                        </button>
+                        {% endif %}
+                        <button type="button" onclick="showMetadataModal()" class="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition">
+                            ⚙️ Configuración
+                        </button>
+                        <button type="button" onclick="showPreview()" class="bg-yellow-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-yellow-600 transition">
+                            👁️ Vista Previa
+                        </button>
+                        <button type="button" onclick="generatePDF()" class="bg-green-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-green-600 transition">
+                            📄 Generar PDF
+                        </button>
+                        <button type="button" onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition">
+                            🚪 Salir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats -->
+        <div class="container mx-auto px-6 py-6">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div class="text-gray-500 text-sm font-semibold">Total Evidencias</div>
+                    <div class="text-3xl font-bold text-blue-600 mt-2" id="totalEvidence">0</div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div class="text-gray-500 text-sm font-semibold">Con Anotaciones</div>
+                    <div class="text-3xl font-bold text-green-600 mt-2" id="withAnnotations">0</div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div class="text-gray-500 text-sm font-semibold">Última Captura</div>
+                    <div class="text-sm font-bold text-gray-700 mt-2" id="lastCapture">-</div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div class="text-gray-500 text-sm font-semibold">Informes Generados</div>
+                    <div class="text-3xl font-bold text-purple-600 mt-2" id="totalReports">0</div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div class="text-gray-500 text-sm font-semibold">Acciones Rápidas</div>
+                    <button onclick="clearAll()" class="mt-2 bg-red-500 text-white px-4 py-1 rounded text-sm hover:bg-red-600 transition">
+                        🗑️ Limpiar Todo
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Evidence Grid -->
+        <div class="container mx-auto px-6 pb-12">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Evidencias Capturadas</h2>
+                <div class="text-sm text-gray-500">
+                    🖱️ Arrastra para reordenar
+                </div>
+            </div>
+
+            <div id="evidenceGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Evidence cards will be inserted here -->
+            </div>
+
+            <div id="emptyState" class="text-center py-12 bg-white rounded-lg shadow">
+                <div class="text-6xl mb-4">📸</div>
+                <h3 class="text-xl font-semibold text-gray-700 mb-2">No hay evidencias aún</h3>
+                <p class="text-gray-500">Abrí el caso cuya API Key está en la extensión. Si estás en otro caso, acá va a aparecer vacío.</p>
+            </div>
+        </div>
+
+        <!-- Reports Section -->
+        <div class="container mx-auto px-6 pb-12">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">📋 Informes Generados</h2>
+            <div id="reportsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Reports will be inserted here -->
+            </div>
+            <div id="emptyReports" class="text-center py-8 bg-white rounded-lg shadow">
+                <p class="text-gray-500">No hay informes generados todavía</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Keys Modal -->
+    <div id="apiKeysModal" class="modal-overlay hidden items-start justify-center z-50">
+        <div class="modal-panel bg-white rounded-lg p-8 max-w-4xl w-full mx-4">
+            <h3 class="modal-handle text-2xl font-bold mb-2">Gestion de API Keys</h3>
+            <p class="text-gray-600 mb-3">La API Key de la extension apunta a <strong>un caso concreto</strong>. Las capturas que subas con esa key caen en ese caso, no en el que estes mirando en pantalla.</p>
+            
+            <div class="flex gap-2 mb-4">
+                <button onclick="createNewApiKey()" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">
+                    ➕ Crear Nueva API Key
+                </button>
+                <button onclick="showLinkApiKeyForm()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">
+                    🔗 Vincular API Key Existente
+                </button>
+            </div>
+
+            <div id="linkApiKeyForm" class="hidden bg-blue-50 p-4 rounded-lg mb-4">
+                <h4 class="font-bold text-blue-800 mb-2">Vincular API Key Compartida</h4>
+                <p class="text-sm text-blue-700 mb-3">Pega una API Key de otro usuario para acceder a su panel de evidencias.</p>
+                <div class="flex gap-2">
+                    <input type="text" id="existingApiKeyInput" placeholder="Pega la API Key aquí" class="flex-1 px-4 py-2 border border-blue-300 rounded-lg">
+                    <button onclick="linkExistingApiKey()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                        Vincular
+                    </button>
+                    <button onclick="hideLinkApiKeyForm()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <div id="apiKeysList" class="space-y-3">
+                <!-- API Keys will be listed here -->
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeApiKeysModal()" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Modal -->
+    <div id="usersModal" class="modal-overlay hidden items-start justify-center z-50">
+        <div class="modal-panel bg-white rounded-lg p-8 max-w-3xl w-full mx-4">
+            <h3 class="modal-handle text-2xl font-bold mb-2">Usuarios</h3>
+            <p class="text-gray-600 mb-4">Alta de cuentas locales en SQLite. El administrador puede crear usuarios y asignar si son admin.</p>
+            <form id="createUserForm" class="bg-slate-50 p-4 rounded-lg mb-4 space-y-3" onsubmit="createLocalUser(event)">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input type="text" id="newLocalUsername" placeholder="Usuario" class="px-4 py-2 border border-gray-300 rounded-lg" required minlength="3" maxlength="64" autocomplete="off">
+                    <input type="password" id="newLocalPassword" placeholder="Contraseña (mín. 6)" class="px-4 py-2 border border-gray-300 rounded-lg" required minlength="6" autocomplete="new-password">
+                </div>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="newLocalIsAdmin">
+                    Este usuario es administrador
+                </label>
+                <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">Crear usuario</button>
+            </form>
+            <div id="usersList" class="space-y-3"></div>
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="closeUsersModal()" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sessions Modal -->
+    <div id="sessionsModal" class="modal-overlay hidden items-start justify-center z-50">
+        <div class="modal-panel bg-white rounded-lg p-8 max-w-4xl w-full mx-4">
+            <h3 class="modal-handle text-2xl font-bold mb-2">Gestion de casos</h3>
+            <p class="text-gray-600 mb-4">Cada caso puede tener su propia API Key. Copia esa key en la extension para que las capturas entren aca.</p>
+            
+            <button onclick="createNewSession()" class="mb-4 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">
+                ➕ Crear Nuevo Caso
+            </button>
+
+            <div id="sessionsList" class="space-y-3">
+                <!-- Sessions will be listed here -->
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeSessionsModal()" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metadata Modal -->
+    <div id="metadataModal" class="modal-overlay hidden items-start justify-center z-50">
+        <div class="modal-panel bg-white rounded-lg p-8 max-w-4xl w-full mx-4">
+            <h3 class="modal-handle text-2xl font-bold mb-6">Configuración del Reporte</h3>
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Título del Reporte</label>
+                    <input type="text" id="metaTitleInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Autor</label>
+                        <input type="text" id="metaAuthorInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">FECHA</label>
+                        <input type="date" id="metaFechaInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">ASUNTO</label>
+                    <input type="text" id="metaAsuntoInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Asunto del informe">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">INFORMACIÓN</label>
+                    <div id="editorInformacion" style="height: 200px;" class="bg-white border border-gray-300 rounded-lg"></div>
+                    <textarea id="metaInformacionInput" class="hidden"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">CONCLUSIONES</label>
+                    <div id="editorConclusiones" style="height: 200px;" class="bg-white border border-gray-300 rounded-lg"></div>
+                    <textarea id="metaConclusionesInput" class="hidden"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Anotaciones (texto simple)</label>
+                    <textarea id="metaNotasInput" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Notas adicionales en texto plano..."></textarea>
+                </div>
+
+                <div class="border-t pt-4">
+                    <h4 class="font-semibold text-gray-800 mb-3">Tipografia del PDF</h4>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Fuente</label>
+                            <select id="metaFontFamily" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <option value="Arial">Arial</option>
+                                <option value="Calibri">Calibri</option>
+                                <option value="Times New Roman">Times New Roman</option>
+                                <option value="Georgia">Georgia</option>
+                                <option value="Verdana">Verdana</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Tamano</label>
+                            <input type="number" id="metaFontSize" min="8" max="16" value="11" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Interlineado</label>
+                            <input type="number" id="metaLineSpacing" min="10" max="24" value="14" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">La fuente se incrusta en el PDF (acentos y eñes). En Informacion/Conclusiones tambien podes cambiar fuente por fragmento.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Zona horaria</label>
+                    <select id="metaTimezone" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></select>
+                    <p class="text-xs text-gray-500 mt-1">En el PDF y la vista previa se muestra UTC y esta zona.</p>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="saveMetadata()" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
+                    Guardar
+                </button>
+                <button onclick="closeMetadataModal()" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Annotation Modal -->
+    <div id="annotationModal" class="modal-overlay hidden items-start justify-center z-50">
+        <div class="modal-panel bg-white rounded-lg p-8 max-w-3xl w-full mx-4">
+            <h3 class="modal-handle text-2xl font-bold mb-4">Editar Anotación</h3>
+            <div id="editorAnnotation" style="height: 300px;" class="bg-white border border-gray-300 rounded-lg mb-4"></div>
+            <textarea id="annotationInput" class="hidden"></textarea>
+            <div class="flex gap-3 mt-6">
+                <button id="saveAnnotationBtn" onclick="saveAnnotationFromModal()" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
+                    Guardar
+                </button>
+                <button onclick="closeAnnotationModal()" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="modal-overlay hidden items-start justify-center z-50">
+        <div class="modal-panel bg-white rounded-lg p-8 max-w-6xl w-full mx-4">
+            <div class="flex justify-between items-center mb-6 modal-handle">
+                <h3 class="text-2xl font-bold">👁️ Vista Previa del Informe</h3>
+                <div class="flex gap-2">
+                    <button onclick="generatePDFFromPreview(event)" class="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 transition">
+                        📄 Generar PDF
+                    </button>
+                    <button onclick="closePreview()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+                </div>
+            </div>
+            <div id="previewContent" class="border border-gray-300 rounded-lg p-8 bg-gray-50 max-h-[70vh] overflow-y-auto">
+                <!-- Preview content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Cargar Sortable.js -->
+    <script src="{{ url_for('static', filename='js/Sortable.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quill.js') }}"></script>
+    <script>
+        let currentEvidenceId = null;
+        let evidenceData = [];
+        let metadata = {};
+        let sortable = null;
+        let currentSessionId = null;
+        let quillInformacion = null;
+        let quillConclusiones = null;
+        let quillAnnotation = null;
+        let canEdit = true;
+        let sessionOwner = null;
+        let currentTzOffset = -3;
+
+        function tzLabel(hours) {
+            const n = Number(hours);
+            const sign = n >= 0 ? '+' : '-';
+            return 'UTC' + sign + Math.abs(n);
+        }
+
+        function fillTimezoneSelect(selectEl, selected) {
+            if (!selectEl) return;
+            const current = String(selected == null ? currentTzOffset : selected);
+            if (!selectEl.options.length) {
+                for (let h = -12; h <= 14; h++) {
+                    const opt = document.createElement('option');
+                    opt.value = String(h);
+                    opt.textContent = tzLabel(h) + (h === -3 ? ' (Argentina)' : '');
+                    selectEl.appendChild(opt);
+                }
+            }
+            selectEl.value = current;
+        }
+
+        function formatDualTime(iso) {
+            if (!iso) return '-';
+            const raw = String(iso);
+            const utcDate = raw.endsWith('Z') || raw.includes('+') ? new Date(raw) : new Date(raw + 'Z');
+            if (isNaN(utcDate.getTime()) && !raw.endsWith('Z')) {
+                const legacy = new Date(raw);
+                if (!isNaN(legacy.getTime())) {
+                    const asUtc = new Date(legacy.getTime() + 3 * 3600000);
+                    return formatDualFromUtcDate(asUtc);
+                }
+                return raw;
+            }
+            if (isNaN(utcDate.getTime())) return raw;
+            return formatDualFromUtcDate(utcDate);
+        }
+
+        function formatDualFromUtcDate(utcDate) {
+            const pad = (n) => String(n).padStart(2, '0');
+            const utcStr = utcDate.getUTCFullYear() + '-' + pad(utcDate.getUTCMonth() + 1) + '-' + pad(utcDate.getUTCDate()) + ' ' + pad(utcDate.getUTCHours()) + ':' + pad(utcDate.getUTCMinutes()) + ':' + pad(utcDate.getUTCSeconds()) + ' UTC';
+            const local = new Date(utcDate.getTime() + currentTzOffset * 3600000);
+            const localStr = local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate()) + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds()) + ' ' + tzLabel(currentTzOffset);
+            return utcStr + '  |  ' + localStr;
+        }
+
+        async function changeTimezone() {
+            const select = document.getElementById('timezoneSelect');
+            currentTzOffset = parseInt(select.value, 10);
+            if (document.getElementById('metaTimezone')) {
+                document.getElementById('metaTimezone').value = String(currentTzOffset);
+            }
+            renderEvidence();
+            updateStats();
+            if (!canEdit || !currentSessionId) return;
+            await fetch('/api/metadata', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: currentSessionId, timezone_offset: currentTzOffset })
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ Dashboard cargado');
+            initializeQuillEditors();
+            fillTimezoneSelect(document.getElementById('timezoneSelect'), currentTzOffset);
+            fillTimezoneSelect(document.getElementById('metaTimezone'), currentTzOffset);
+            initDraggableModals();
+            loadEvidence();
+            loadReports();
+        });
+
+        setInterval(() => {
+            loadEvidence();
+            loadReports();
+        }, 5000);
+
+        // ========== QUILL EDITOR INITIALIZATION ==========
+
+        function initializeQuillEditors() {
+            const Font = Quill.import('formats/font');
+            Font.whitelist = ['arial', 'calibri', 'times-new-roman', 'georgia', 'verdana'];
+            Quill.register(Font, true);
+
+            const toolbarOptions = [
+                [{ 'header': [1, 2, 3, false] }],
+                [{ 'font': Font.whitelist }],
+                [{ 'size': ['small', false, 'large', 'huge'] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'indent': '-1'}, { 'indent': '+1' }],
+                [{ 'align': [] }],
+                ['link'],
+                ['clean']
+            ];
+
+            const toolbarAnnotation = [
+                ['bold', 'italic', 'underline'],
+                [{ 'color': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                ['link'],
+                ['clean']
+            ];
+
+            quillInformacion = new Quill('#editorInformacion', {
+                theme: 'snow',
+                modules: { toolbar: toolbarOptions },
+                placeholder: 'Escribe la información del informe aquí...'
+            });
+
+            quillConclusiones = new Quill('#editorConclusiones', {
+                theme: 'snow',
+                modules: { toolbar: toolbarOptions },
+                placeholder: 'Escribe las conclusiones del informe aquí...'
+            });
+
+            quillAnnotation = new Quill('#editorAnnotation', {
+                theme: 'snow',
+                modules: { toolbar: toolbarAnnotation },
+                placeholder: 'Escribe tus observaciones sobre esta evidencia...'
+            });
+            // Sincronizar con dashboardj.js
+            window.quillAnnotation = quillAnnotation;
+        }
+
+        async function loadEvidence() {
+            try {
+                const url = currentSessionId ? `/api/evidence?session_id=${currentSessionId}` : '/api/evidence';
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    evidenceData = data.items;
+                    metadata = data.metadata;
+                    currentSessionId = data.session_id;
+                    canEdit = data.can_edit !== undefined ? data.can_edit : true;
+                    sessionOwner = data.owner || 'desconocido';
+                    currentTzOffset = parseInt(metadata.timezone_offset, 10);
+                    if (Number.isNaN(currentTzOffset)) currentTzOffset = -3;
+                    fillTimezoneSelect(document.getElementById('timezoneSelect'), currentTzOffset);
+                    fillTimezoneSelect(document.getElementById('metaTimezone'), currentTzOffset);
+                    updateCaseKeyHint(data.ingest_api_key, data.ingest_keys || [], data.metadata);
+                    
+                    renderEvidence();
+                    updateStats();
+                    initializeSortable();
+                    updatePermissionsUI();
+                }
+            } catch (error) {
+                console.error('Error loading evidence:', error);
+            }
+        }
+
+        function updatePermissionsUI() {
+            const header = document.querySelector('header .container > div');
+            let readOnlyBadge = document.getElementById('readOnlyBadge');
+            
+            if (!canEdit && !readOnlyBadge) {
+                readOnlyBadge = document.createElement('div');
+                readOnlyBadge.id = 'readOnlyBadge';
+                readOnlyBadge.className = 'bg-yellow-400 text-yellow-900 px-4 py-2 rounded-lg font-semibold ml-3';
+                readOnlyBadge.innerHTML = `👁️ Solo Lectura (Owner: ${sessionOwner})`;
+                header.appendChild(readOnlyBadge);
+            } else if (canEdit && readOnlyBadge) {
+                readOnlyBadge.remove();
+            }
+        }
+
+        async function loadReports() {
+            try {
+                const response = await fetch('/api/reports');
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderReports(data.reports);
+                }
+            } catch (error) {
+                console.error('Error loading reports:', error);
+            }
+        }
+
+        function renderReports(reports) {
+            const grid = document.getElementById('reportsGrid');
+            const empty = document.getElementById('emptyReports');
+            
+            if (document.getElementById('totalReports')) {
+                document.getElementById('totalReports').textContent = reports.length;
+            }
+
+            if (reports.length === 0) {
+                grid.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+
+            empty.classList.add('hidden');
+            
+            // Obtener el usuario actual desde la sesión o metadata
+            const currentUser = sessionOwner || (metadata && metadata.author) || 'unknown';
+            
+            grid.innerHTML = reports.map(report => {
+                const ownerBadge = report.owner ? `<div class="text-xs text-blue-600">👤 ${report.owner}</div>` : '';
+                const canDelete = report.owner === currentUser;
+                return `
+                    <div class="bg-white p-4 rounded-lg shadow hover:shadow-lg transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-lg font-semibold text-blue-600">📄 ${report.title}</div>
+                        </div>
+                        <div class="text-sm text-gray-600 mb-3">
+                            <div>🕐 ${new Date(report.created_at).toLocaleString('es')}</div>
+                            <div>📸 ${report.num_evidences} evidencia(s)</div>
+                            ${ownerBadge}
+                        </div>
+                        <div class="flex gap-2">
+                            <a href="/reports/${report.filename}" target="_blank" class="flex-1 bg-blue-500 text-white text-center px-4 py-2 rounded hover:bg-blue-600 transition">
+                                📥 Descargar PDF
+                            </a>
+                            <button onclick="editReport('${report.session_id}')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition">
+                                ✏️ Editar
+                            </button>
+                            ${canDelete ? `
+                                <button onclick="deleteReport(${report.id})" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition" title="Eliminar reporte">
+                                    🗑️
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).reverse().join('');
+        }
+
+        async function deleteReport(reportId) {
+            if (!confirm('¿Estás seguro de que deseas eliminar este reporte? Esta acción no se puede deshacer.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/reports/${reportId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Reporte eliminado correctamente', 'success');
+                    await loadReports();
+                } else {
+                    showNotification(data.error || 'Error al eliminar reporte', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting report:', error);
+                showNotification('Error al eliminar reporte', 'error');
+            }
+        }
+
+        async function cleanupOldSessions() {
+            const days = prompt('¿Cuántos días de antigüedad deben tener los casos para ser eliminados? (por defecto 90 días):', '90');
+            
+            if (!days || isNaN(days) || parseInt(days) < 1) {
+                return;
+            }
+            
+            if (!confirm(`¿Estás seguro de que deseas eliminar todos los casos archivados con más de ${days} días de antigüedad? Esta acción no se puede deshacer.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/sessions/cleanup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ days: parseInt(days) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`Se eliminaron ${data.deleted_count} casos antiguos`, 'success');
+                    await loadSessions();
+                    await loadReports();
+                } else {
+                    showNotification(data.error || 'Error al limpiar casos', 'error');
+                }
+            } catch (error) {
+                console.error('Error cleaning up sessions:', error);
+                showNotification('Error al limpiar casos', 'error');
+            }
+        }
+
+        async function editReport(sessionId) {
+            try {
+                // Cargar la sesión asociada al reporte
+                const response = await fetch(`/api/sessions/${sessionId}`);
+                const data = await response.json();
+                
+                if (data.success && data.session) {
+                    // Cambiar a la sesión del reporte
+                    currentSessionId = sessionId;
+                    
+                    // Cargar los datos de la sesión
+                    await loadSessionData();
+                    
+                    // Mostrar notificación
+                    showNotification('Reporte cargado. Puedes editarlo y regenerar el PDF.', 'success');
+                    
+                    // Scroll a la sección de evidencias
+                    document.getElementById('evidenceGrid').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    showNotification('Error al cargar el reporte', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading report:', error);
+                showNotification('Error al cargar el reporte', 'error');
+            }
+        }
+
+        async function loadSessionData() {
+            try {
+                // Cargar metadata de la sesión
+                const metaResponse = await fetch(`/api/sessions/${currentSessionId}/metadata`);
+                const metaData = await metaResponse.json();
+                
+                if (metaData.success) {
+                    metadata = metaData.metadata;
+                    
+                    // Cargar en los editores Quill
+                    if (quillInformacion) {
+                        quillInformacion.root.innerHTML = metadata.informacion || '';
+                    }
+                    if (quillConclusiones) {
+                        quillConclusiones.root.innerHTML = metadata.conclusiones || '';
+                    }
+                    
+                    // Actualizar título
+                    if (document.getElementById('reportTitle')) {
+                        document.getElementById('reportTitle').textContent = metadata.title || 'Reporte de Evidencias';
+                    }
+                }
+                
+                // Recargar evidencias
+                await loadEvidence();
+            } catch (error) {
+                console.error('Error loading session data:', error);
+            }
+        }
+
+        function initializeSortable() {
+            const grid = document.getElementById('evidenceGrid');
+            if (sortable) sortable.destroy();
+            if (evidenceData.length === 0 || !canEdit) return;
+            
+            sortable = Sortable.create(grid, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                disabled: !canEdit,
+                onEnd: function(evt) {
+                    const newOrder = Array.from(grid.children).map(card => parseInt(card.dataset.evidenceId));
+                    saveNewOrder(newOrder);
+                }
+            });
+        }
+
+        async function saveNewOrder(order) {
+            if (!canEdit) return;
+            try {
+                await fetch('/api/evidence/reorder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order: order, session_id: currentSessionId })
+                });
+            } catch (error) {
+                console.error('Error saving order:', error);
+            }
+        }
+
+        function renderEvidence() {
+            const grid = document.getElementById('evidenceGrid');
+            const emptyState = document.getElementById('emptyState');
+
+            if (evidenceData.length === 0) {
+                grid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            grid.innerHTML = evidenceData.map(item => `
+                <div class="evidence-card bg-white rounded-lg shadow-md overflow-hidden" data-evidence-id="${item.id}">
+                    <div class="bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-3 ${canEdit ? 'cursor-move' : 'cursor-default'}">
+                        <div class="flex justify-between items-center">
+                            <span class="text-white font-semibold">🔷 Evidencia #${item.id}</span>
+                            <span class="text-xs bg-white text-blue-600 px-2 py-1 rounded">${item.capture_mode === 'area' ? 'Area' : item.capture_mode}</span>
+                        </div>
+                    </div>
+                    
+                    ${item.filename ? `
+                        <div class="relative group">
+                            <img src="/evidence/${item.filename}" alt="Evidence" class="w-full h-48 object-cover cursor-pointer" onclick="openImageModal('/evidence/${item.filename}')">
+                            <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <button onclick="openImageModal('/evidence/${item.filename}')" class="bg-white text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-100">
+                                    👁️ Vista Previa
+                                </button>
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="p-4">
+                        <div class="text-xs text-gray-500 mb-2">${formatDualTime(item.timestamp)}</div>
+                        <div class="text-sm mb-2">
+                            <div class="font-semibold text-gray-700">URL:</div>
+                            <div class="text-gray-600 truncate">${item.url}</div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+                            <div><span class="font-semibold">IP Usuario:</span><div class="text-gray-600">${item.user_ip || 'N/A'}</div></div>
+                            <div><span class="font-semibold">IP del sitio:</span><div class="text-gray-600">${item.server_ip || 'N/A'}</div></div>
+                            <div><span class="font-semibold">Fuente de hora:</span><div class="text-gray-600">${item.time_source || 'N/A'}</div></div>
+                            <div><span class="font-semibold">Carpeta local:</span><div class="text-gray-600 break-all">${item.download_folder || '-'}</div></div>
+                        </div>
+                        ${item.annotation ? `<div class="bg-yellow-50 border-l-4 border-yellow-400 p-2 mb-3"><div class="text-xs font-semibold text-yellow-700 mb-1">Anotación:</div><div class="text-xs text-gray-700 annotation-content">${item.annotation}</div></div>` : ''}
+                        <div class="text-xs mb-3 p-2 rounded ${item.ots_status === 'confirmed' ? 'bg-green-50 text-green-800' : item.ots_filename ? 'bg-indigo-50 text-indigo-800' : 'bg-gray-100 text-gray-600'}">
+                            <div class="font-semibold">Prueba de tiempo (OpenTimestamps)</div>
+                            <div>${item.ots_status === 'confirmed' ? 'Sello de tiempo confirmado' : item.ots_filename ? ('Generada: ' + (item.ots_status === 'pending' ? 'pendiente de confirmacion' : (item.ots_status || 'pendiente'))) : 'Todavia no hay sello'}</div>
+                            ${item.sha256 ? `<div class="font-mono break-all mt-1">SHA256: ${item.sha256}</div>` : ''}
+                        </div>
+                        <div class="flex flex-wrap gap-2 mb-2">
+                            ${canEdit ? `<button type="button" onclick="stampOts(${item.id})" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700">Sellar y generar .ots</button>` : ''}
+                            <button type="button" onclick="verifyOts(${item.id})" class="bg-gray-700 text-white px-3 py-1 rounded text-sm hover:bg-gray-800">Verificar</button>
+                            ${item.ots_filename ? `<button type="button" onclick="downloadOtsToFolder(${item.id})" class="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm">Descargar .ots y recibo</button>` : ''}
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="editAnnotation(${item.id}, \`${encodeURIComponent(item.annotation || '')}\`)" 
+                                    class="flex-1 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}"
+                                    ${!canEdit ? 'disabled title="Solo lectura"' : ''}>
+                                ${canEdit ? '✏️ Anotar' : '👁️ Ver'}
+                            </button>
+                            ${canEdit ? `<button onclick="deleteEvidence(${item.id})" class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition">🗑️</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats() {
+            document.getElementById('totalEvidence').textContent = evidenceData.length;
+            document.getElementById('withAnnotations').textContent = evidenceData.filter(e => e.annotation).length;
+            document.getElementById('lastCapture').textContent = evidenceData.length > 0 ? formatDualTime(evidenceData[evidenceData.length - 1].timestamp) : '-';
+            document.getElementById('reportTitle').textContent = metadata.title || 'Reporte de Evidencias';
+        }
+
+        // ========== API KEYS MANAGEMENT ==========
+
+        async function showApiKeysModal() {
+            await loadApiKeys();
+            document.getElementById('apiKeysModal').classList.remove('hidden');
+            document.getElementById('apiKeysModal').classList.add('flex');
+        }
+
+        function closeApiKeysModal() {
+            document.getElementById('apiKeysModal').classList.add('hidden');
+            document.getElementById('apiKeysModal').classList.remove('flex');
+            hideLinkApiKeyForm();
+        }
+
+        async function showUsersModal() {
+            await loadUsers();
+            document.getElementById('usersModal').classList.remove('hidden');
+            document.getElementById('usersModal').classList.add('flex');
+        }
+
+        function closeUsersModal() {
+            document.getElementById('usersModal').classList.add('hidden');
+            document.getElementById('usersModal').classList.remove('flex');
+        }
+
+        async function loadUsers() {
+            const list = document.getElementById('usersList');
+            list.innerHTML = '<p class="text-gray-500">Cargando...</p>';
+            try {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                if (!data.success) {
+                    list.innerHTML = '<p class="text-red-600">' + (data.error || 'No se pudieron cargar los usuarios') + '</p>';
+                    return;
+                }
+                if (!data.users.length) {
+                    list.innerHTML = '<p class="text-gray-500">No hay usuarios</p>';
+                    return;
+                }
+                list.innerHTML = data.users.map(function (u) {
+                    const tipo = u.is_admin ? 'Administrador' : (u.ad_user ? 'Directorio' : 'Local');
+                    const last = u.last_login ? formatDualTime(u.last_login) : 'Nunca';
+                    const resetBtn = u.ad_user ? '' : '<button type="button" onclick="resetUserPassword(\'' + u.username.replace(/'/g, '') + '\')" class="text-sm bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">Reset clave</button>';
+                    return '<div class="border border-gray-200 rounded-lg p-3 flex justify-between items-center gap-3">' +
+                        '<div><div class="font-semibold">' + u.username + '</div>' +
+                        '<div class="text-xs text-gray-500">' + tipo + ' · último ingreso: ' + last + '</div></div>' +
+                        resetBtn + '</div>';
+                }).join('');
+            } catch (e) {
+                list.innerHTML = '<p class="text-red-600">Error de conexión</p>';
+            }
+        }
+
+        async function createLocalUser(event) {
+            event.preventDefault();
+            const username = document.getElementById('newLocalUsername').value.trim();
+            const password = document.getElementById('newLocalPassword').value;
+            const is_admin = document.getElementById('newLocalIsAdmin').checked;
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, is_admin })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('createUserForm').reset();
+                    await loadUsers();
+                    alert('Usuario creado');
+                } else {
+                    alert(data.error || 'No se pudo crear');
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        async function resetUserPassword(username) {
+            const password = prompt('Nueva contraseña para ' + username + ' (mín. 6 caracteres):');
+            if (!password) return;
+            try {
+                const response = await fetch('/api/users/' + encodeURIComponent(username) + '/password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await response.json();
+                alert(data.success ? 'Contraseña actualizada' : (data.error || 'No se pudo cambiar'));
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        function showLinkApiKeyForm() {
+            document.getElementById('linkApiKeyForm').classList.remove('hidden');
+        }
+
+        function hideLinkApiKeyForm() {
+            document.getElementById('linkApiKeyForm').classList.add('hidden');
+            document.getElementById('existingApiKeyInput').value = '';
+        }
+
+        async function loadApiKeys() {
+            try {
+                const response = await fetch('/api/api-keys');
+                const data = await response.json();
+                if (data.success) {
+                    renderApiKeys(data.own_keys || [], data.shared_keys || []);
+                }
+            } catch (error) {
+                console.error('Error loading API keys:', error);
+            }
+        }
+
+        function renderApiKeys(ownKeys, sharedKeys) {
+            const list = document.getElementById('apiKeysList');
+            
+            let html = '';
+            
+            // API Keys propias
+            if (ownKeys.length > 0) {
+                html += '<h4 class="text-lg font-bold text-gray-800 mb-3">🔑 Mis API Keys</h4>';
+                html += '<div class="space-y-3 mb-6">';
+                
+                ownKeys.forEach(key => {
+                    const caseLabel = key.case_title
+                        ? `Caso de esta key: <strong>${key.case_title}</strong>`
+                        : 'Esta key todavía no está ligada a un caso (se liga al primer upload)';
+                    html += `
+                        <div class="bg-gray-50 p-4 rounded-lg border ${key.is_active ? 'border-green-300' : 'border-gray-300'}">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex-1">
+                                    <div class="font-semibold text-gray-800">${key.name}</div>
+                                    <div class="text-sm text-indigo-800 mt-1">${caseLabel}</div>
+                                    <div class="text-xs text-gray-500 mt-1">Creada: ${new Date(key.created_at).toLocaleString('es')}</div>
+                                    ${key.last_used ? `<div class="text-xs text-gray-500">Último uso: ${new Date(key.last_used).toLocaleString('es')}</div>` : ''}
+                                </div>
+                                <span class="px-2 py-1 rounded text-xs ${key.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}">
+                                    ${key.is_active ? '✓ Activa' : '✗ Inactiva'}
+                                </span>
+                            </div>
+                            <div class="bg-white p-2 rounded font-mono text-sm mb-3 break-all border border-gray-200">${key.api_key}</div>
+                            <div class="flex gap-2">
+                                <button onclick="copyToClipboard('${key.api_key}')" class="flex-1 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition">📋 Copiar</button>
+                                <button onclick="toggleApiKey(${key.id})" class="flex-1 bg-${key.is_active ? 'orange' : 'green'}-500 text-white px-3 py-1 rounded text-sm hover:bg-${key.is_active ? 'orange' : 'green'}-600 transition">${key.is_active ? '🔒 Desactivar' : '🔓 Activar'}</button>
+                                <button onclick="deleteApiKey(${key.id})" class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition">🗑️</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            }
+            
+            // API Keys compartidas
+            if (sharedKeys.length > 0) {
+                html += '<h4 class="text-lg font-bold text-gray-800 mb-3 mt-6">🔗 API Keys Compartidas Conmigo</h4>';
+                html += '<div class="space-y-3">';
+                
+                sharedKeys.forEach(key => {
+                    html += `
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-300">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex-1">
+                                    <div class="font-semibold text-gray-800">${key.name}</div>
+                                    <div class="text-xs text-blue-700 font-semibold mt-1">👤 Compartida por: ${key.owner}</div>
+                                    <div class="text-xs text-gray-500 mt-1">Vinculada: ${new Date(key.shared_at).toLocaleString('es')}</div>
+                                    ${key.last_used ? `<div class="text-xs text-gray-500">Último uso: ${new Date(key.last_used).toLocaleString('es')}</div>` : ''}
+                                </div>
+                                <span class="px-2 py-1 rounded text-xs ${key.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}">
+                                    ${key.is_active ? '✓ Activa' : '✗ Inactiva'}
+                                </span>
+                            </div>
+                            <div class="bg-white p-2 rounded font-mono text-sm mb-3 break-all border border-blue-200">${key.api_key}</div>
+                            <div class="flex gap-2">
+                                <button onclick="copyToClipboard('${key.api_key}')" class="flex-1 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition">📋 Copiar</button>
+                                <button onclick="removeSharedAccess('${key.api_key}')" class="bg-orange-500 text-white px-3 py-1 rounded text-sm hover:bg-orange-600 transition">❌ Remover Acceso</button>
+                            </div>
+                            <div class="mt-2 text-xs text-gray-600 italic">
+                                ℹ️ Tienes acceso completo (lectura y edición) a las sesiones de ${key.owner}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            }
+            
+            // Si no hay ninguna API key
+            if (ownKeys.length === 0 && sharedKeys.length === 0) {
+                html = '<p class="text-gray-500 text-center py-4">No tienes API Keys configuradas</p>';
+            }
+            
+            list.innerHTML = html;
+        }
+
+        async function createNewApiKey() {
+            const name = prompt('Nombre para la nueva API Key:', 'API Key ' + new Date().toLocaleDateString());
+            if (!name) return;
+            try {
+                const response = await fetch('/api/api-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, session_id: currentSessionId })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ API Key creada exitosamente');
+                    loadApiKeys();
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Error al crear API Key');
+            }
+        }
+
+        async function linkExistingApiKey() {
+            const apiKey = document.getElementById('existingApiKeyInput').value.trim();
+            if (!apiKey) {
+                alert('Por favor ingresa una API Key');
+                return;
+            }
+            try {
+                const response = await fetch('/api/api-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ API Key vinculada! Ahora tienes acceso a las sesiones compartidas.');
+                    hideLinkApiKeyForm();
+                    await loadApiKeys();
+                    await loadSessions();
+                    await loadEvidence();
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Error al vincular API Key');
+            }
+        }
+
+        async function toggleApiKey(keyId) {
+            try {
+                const response = await fetch(`/api/api-keys/${keyId}/toggle`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) loadApiKeys();
+            } catch (error) {
+                console.error('Error toggling API key:', error);
+            }
+        }
+
+        async function deleteApiKey(keyId) {
+            if (!confirm('¿Eliminar esta API Key? Esto afectará a todos los que la estén usando.')) return;
+            try {
+                const response = await fetch(`/api/api-keys/${keyId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ API Key eliminada');
+                    loadApiKeys();
+                }
+            } catch (error) {
+                console.error('Error deleting API key:', error);
+            }
+        }
+
+        async function removeSharedAccess(apiKey) {
+            if (!confirm('¿Remover tu acceso a esta API Key compartida? Ya no podrás ver las sesiones del owner.')) return;
+            try {
+                const response = await fetch(`/api/api-keys/shared/${encodeURIComponent(apiKey)}`, { 
+                    method: 'DELETE' 
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ Acceso removido');
+                    await loadApiKeys();
+                    await loadSessions();
+                    await loadEvidence();
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Error al remover acceso');
+                console.error(error);
+            }
+        }
+
+        // ========== SESSIONS MANAGEMENT ==========
+
+        async function showSessionsModal() {
+            await loadSessions();
+            document.getElementById('sessionsModal').classList.remove('hidden');
+            document.getElementById('sessionsModal').classList.add('flex');
+        }
+
+        function closeSessionsModal() {
+            document.getElementById('sessionsModal').classList.add('hidden');
+            document.getElementById('sessionsModal').classList.remove('flex');
+        }
+
+        async function loadSessions() {
+            try {
+                const response = await fetch('/api/sessions');
+                const data = await response.json();
+                if (data.success) renderSessions(data.sessions);
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+            }
+        }
+
+        function renderSessions(sessions) {
+            const list = document.getElementById('sessionsList');
+            if (sessions.length === 0) {
+                list.innerHTML = '<p class="text-gray-500 text-center py-4">No tienes casos/sesiones</p>';
+                return;
+            }
+
+            const activeSessions = sessions.filter(s => !s.is_archived);
+            const archivedSessions = sessions.filter(s => s.is_archived);
+            let html = '';
+
+            if (activeSessions.length > 0) {
+                html += '<h4 class="font-bold text-gray-800 mb-2">📂 Casos Activos</h4>';
+                html += activeSessions.map(sess => renderSessionCard(sess, false)).join('');
+            }
+            if (archivedSessions.length > 0) {
+                html += '<h4 class="font-bold text-gray-800 mb-2 mt-6">📦 Casos Archivados</h4>';
+                html += archivedSessions.map(sess => renderSessionCard(sess, true)).join('');
+            }
+            list.innerHTML = html;
+        }
+
+        function renderSessionCard(sess, isArchived) {
+            const isActive = currentSessionId === sess.session_id;
+            const isOwn = sess.is_own;
+            const ownerBadge = !isOwn ? `<span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">👤 ${sess.owner}</span>` : '';
+            const readOnlyBadge = !isOwn ? `<span class="text-xs text-gray-500 italic ml-2">(Solo lectura)</span>` : '';
+            
+            const keyText = sess.ingest_api_key
+                ? `<div class="mt-2 bg-white border border-indigo-200 rounded p-2">
+                        <div class="text-xs font-semibold text-indigo-800 mb-1">API Key de este caso (pegar en la extension)</div>
+                        <div class="font-mono text-xs break-all text-gray-800">${sess.ingest_api_key}</div>
+                   </div>`
+                : `<div class="mt-2 text-xs text-orange-700">Este caso aún no tiene API Key de ingesta.</div>`;
+            
+            return `
+                <div class="bg-${isActive ? 'blue-50 border-blue-300' : 'gray-50 border-gray-300'} p-4 rounded-lg border mb-3">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1">
+                            <div class="font-semibold text-gray-800">
+                                ${sess.title} ${isActive ? '(Abierto ahora)' : ''}
+                                ${ownerBadge}
+                                ${readOnlyBadge}
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">📸 ${sess.evidence_count} evidencia(s) | Creado: ${new Date(sess.created_at).toLocaleDateString('es')}</div>
+                            ${keyText}
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-3">
+                        ${!isActive ? `<button onclick="switchToSession('${sess.session_id}')" class="flex-1 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition">📂 Abrir</button>` : '<div class="flex-1"></div>'}
+                        ${sess.ingest_api_key ? `<button onclick="copyToClipboard('${sess.ingest_api_key}')" class="bg-indigo-500 text-white px-3 py-1 rounded text-sm hover:bg-indigo-600 transition">📋 Copiar API Key</button>` : ''}
+                        ${isOwn ? (isArchived ? 
+                            `<button onclick="activateSession('${sess.session_id}')" class="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 transition">↩️ Restaurar</button>` :
+                            `<button onclick="archiveSession('${sess.session_id}')" class="bg-orange-500 text-white px-3 py-1 rounded text-sm hover:bg-orange-600 transition">📦 Archivar</button>`
+                        ) : ''}
+                        ${isOwn ? `<button onclick="deleteSession('${sess.session_id}')" class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition">🗑️</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function createNewSession() {
+            const title = prompt('Nombre del nuevo caso:', 'Caso ' + new Date().toLocaleDateString());
+            if (!title) return;
+            try {
+                const response = await fetch('/api/sessions/new', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ Nuevo caso creado. Copia su API Key en la extension para que las capturas entren aca.' + (data.ingest_api_key ? ('\n\n' + data.ingest_api_key) : ''));
+                    currentSessionId = data.session_id;
+                    if (data.ingest_api_key) copyToClipboard(data.ingest_api_key);
+                    loadSessions();
+                    loadEvidence();
+                    closeSessionsModal();
+                }
+            } catch (error) {
+                alert('❌ Error al crear caso');
+            }
+        }
+
+        async function switchToSession(sessionId) {
+            currentSessionId = sessionId;
+            closeSessionsModal();
+            await loadEvidence();
+            alert('✅ Caso activado');
+        }
+
+        async function archiveSession(sessionId) {
+            if (!confirm('¿Archivar este caso?')) return;
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}/archive`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    loadSessions();
+                    if (currentSessionId === sessionId) {
+                        currentSessionId = null;
+                        loadEvidence();
+                    }
+                }
+            } catch (error) {
+                console.error('Error archiving session:', error);
+            }
+        }
+
+        async function activateSession(sessionId) {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}/activate`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) loadSessions();
+            } catch (error) {
+                console.error('Error activating session:', error);
+            }
+        }
+
+        async function deleteSession(sessionId) {
+            if (!confirm('¿ELIMINAR PERMANENTEMENTE este caso?')) return;
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ Caso eliminado');
+                    loadSessions();
+                    if (currentSessionId === sessionId) {
+                        currentSessionId = null;
+                        loadEvidence();
+                    }
+                }
+            } catch (error) {
+                console.error('Error deleting session:', error);
+            }
+        }
+
+        // ========== METADATA & EVIDENCE ==========
+
+        function showMetadataModal() {
+            if (!canEdit) {
+                alert('⚠️ Solo tienes acceso de lectura a esta sesión');
+                return;
+            }
+            
+            document.getElementById('metaTitleInput').value = metadata.title || '';
+            document.getElementById('metaAuthorInput').value = metadata.author || '';
+            document.getElementById('metaAsuntoInput').value = metadata.asunto || '';
+            document.getElementById('metaFechaInput').value = metadata.fecha || '';
+            document.getElementById('metaFontFamily').value = metadata.font_family || 'Arial';
+            document.getElementById('metaFontSize').value = metadata.font_size || 11;
+            document.getElementById('metaLineSpacing').value = metadata.line_spacing || 14;
+            fillTimezoneSelect(document.getElementById('metaTimezone'), metadata.timezone_offset != null ? metadata.timezone_offset : currentTzOffset);
+            if (document.getElementById('metaNotasInput')) {
+                document.getElementById('metaNotasInput').value = metadata.notas || '';
+            }
+            
+            if (quillInformacion) {
+                const infoHtml = metadata.informacion || '';
+                quillInformacion.root.innerHTML = infoHtml;
+            }
+            
+            if (quillConclusiones) {
+                const conclusionesHtml = metadata.conclusiones || '';
+                quillConclusiones.root.innerHTML = conclusionesHtml;
+            }
+            
+            document.getElementById('metadataModal').classList.remove('hidden');
+            document.getElementById('metadataModal').classList.add('flex');
+        }
+
+        function closeMetadataModal() {
+            document.getElementById('metadataModal').classList.add('hidden');
+            document.getElementById('metadataModal').classList.remove('flex');
+        }
+
+        async function saveMetadata() {
+            if (!canEdit) {
+                alert('⚠️ No tienes permisos de edición');
+                return;
+            }
+            
+            try {
+                const informacionHtml = quillInformacion ? quillInformacion.root.innerHTML : '';
+                const conclusionesHtml = quillConclusiones ? quillConclusiones.root.innerHTML : '';
+                
+                const response = await fetch('/api/metadata', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        title: document.getElementById('metaTitleInput').value,
+                        author: document.getElementById('metaAuthorInput').value,
+                        asunto: document.getElementById('metaAsuntoInput').value,
+                        fecha: document.getElementById('metaFechaInput').value,
+                        informacion: informacionHtml,
+                        conclusiones: conclusionesHtml,
+                        notas: document.getElementById('metaNotasInput') ? document.getElementById('metaNotasInput').value : '',
+                        font_family: document.getElementById('metaFontFamily').value,
+                        font_size: parseInt(document.getElementById('metaFontSize').value, 10) || 11,
+                        line_spacing: parseInt(document.getElementById('metaLineSpacing').value, 10) || 14,
+                        timezone_offset: parseInt(document.getElementById('metaTimezone').value, 10),
+                        session_id: currentSessionId
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    closeMetadataModal();
+                    loadEvidence();
+                    alert('✅ Configuración guardada');
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error saving metadata:', error);
+                alert('❌ Error al guardar');
+            }
+        }
+
+        function editAnnotation(id, encodedAnnotation) {
+            console.log('editAnnotation llamada con ID:', id);
+            currentEvidenceId = id;
+            window.currentEditingEvidenceId = id; // Sincronizar con dashboardj.js
+            
+            const currentAnnotation = decodeURIComponent(encodedAnnotation);
+            console.log('Anotación actual (primeros 50 chars):', currentAnnotation.substring(0, 50));
+            
+            // Asegurar que quillAnnotation esté disponible globalmente
+            if (!quillAnnotation && window.quillAnnotation) {
+                quillAnnotation = window.quillAnnotation;
+            }
+            if (!window.quillAnnotation && quillAnnotation) {
+                window.quillAnnotation = quillAnnotation;
+            }
+            
+            // Si no existe el editor, inicializarlo
+            if (!quillAnnotation && !window.quillAnnotation) {
+                const editorDiv = document.getElementById('editorAnnotation');
+                if (editorDiv) {
+                    const toolbarAnnotation = [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'color': [] }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        ['link'],
+                        ['clean']
+                    ];
+                    
+                    quillAnnotation = new Quill('#editorAnnotation', {
+                        theme: 'snow',
+                        modules: { toolbar: toolbarAnnotation },
+                        placeholder: 'Escribe tus observaciones sobre esta evidencia...'
+                    });
+                    window.quillAnnotation = quillAnnotation;
+                }
+            }
+            
+            if (quillAnnotation || window.quillAnnotation) {
+                const editor = quillAnnotation || window.quillAnnotation;
+                editor.root.innerHTML = currentAnnotation || '';
+                if (!canEdit) {
+                    editor.enable(false);
+                } else {
+                    editor.enable(true);
+                }
+                console.log('Editor configurado correctamente');
+            } else {
+                console.error('No se pudo inicializar el editor Quill');
+            }
+            
+            const modal = document.getElementById('annotationModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                console.log('Modal abierto');
+            } else {
+                console.error('Modal no encontrado');
+            }
+        }
+
+        function closeAnnotationModal() {
+            document.getElementById('annotationModal').classList.add('hidden');
+            document.getElementById('annotationModal').classList.remove('flex');
+            currentEvidenceId = null;
+            window.currentEditingEvidenceId = null; // Sincronizar con dashboardj.js
+        }
+
+        // Función para guardar anotación desde el modal
+        async function saveAnnotationFromModal() {
+            console.log('saveAnnotationFromModal llamada desde dashboard.html');
+            
+            if (!canEdit) {
+                console.log('No tiene permisos de edición');
+                closeAnnotationModal();
+                return;
+            }
+            
+            const evidenceId = currentEvidenceId || window.currentEditingEvidenceId;
+            console.log('Evidence ID:', evidenceId);
+            
+            if (!evidenceId) {
+                alert('Error: No hay evidencia seleccionada. Por favor, cierra y vuelve a abrir el modal.');
+                console.error('No se encontró evidenceId');
+                return;
+            }
+            
+            // Obtener el editor Quill
+            const quillEditor = quillAnnotation || window.quillAnnotation;
+            console.log('Quill editor encontrado:', !!quillEditor);
+            
+            if (!quillEditor) {
+                alert('Error: Editor de anotación no encontrado. Por favor, recarga la página.');
+                console.error('No se encontró el editor Quill');
+                return;
+            }
+            
+            // Deshabilitar el botón mientras se guarda
+            const saveButton = document.getElementById('saveAnnotationBtn') || document.querySelector('button[onclick*="saveAnnotationFromModal"]');
+            const originalText = saveButton ? saveButton.textContent : 'Guardar';
+            if (saveButton) {
+                saveButton.disabled = true;
+                saveButton.textContent = 'Guardando...';
+            }
+            
+            try {
+                const annotationHtml = quillEditor.root.innerHTML || '';
+                console.log('Guardando anotación para evidencia:', evidenceId);
+                console.log('Contenido HTML (primeros 100 chars):', annotationHtml.substring(0, 100));
+                
+                const response = await fetch(`/api/evidence/${evidenceId}`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ annotation: annotationHtml })
+                });
+                
+                console.log('Respuesta del servidor:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error del servidor:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Datos recibidos:', data);
+                
+                if (data.success) {
+                    if (typeof showNotification === 'function') {
+                        showNotification('Anotación guardada correctamente', 'success');
+                    } else {
+                        alert('✅ Anotación guardada correctamente');
+                    }
+                    
+                    closeAnnotationModal();
+                    await loadEvidence();
+                } else {
+                    const errorMsg = data.error || 'Error al guardar anotación';
+                    console.error('Error en respuesta:', errorMsg);
+                    alert('❌ ' + errorMsg);
+                }
+            } catch (error) {
+                console.error('Error saving annotation:', error);
+                alert('❌ Error al guardar: ' + error.message);
+            } finally {
+                // Restaurar el botón
+                const saveButton = document.getElementById('saveAnnotationBtn') || document.querySelector('button[onclick*="saveAnnotationFromModal"]');
+                if (saveButton) {
+                    saveButton.disabled = false;
+                    saveButton.textContent = originalText;
+                }
+            }
+        }
+        
+        // Hacer la función disponible globalmente
+        window.saveAnnotationFromModal = saveAnnotationFromModal;
+        
+        async function saveAnnotation() {
+            // Usar la función de dashboardj.js si existe, sino usar esta
+            if (typeof saveAnnotationFromModal === 'function') {
+                return saveAnnotationFromModal();
+            }
+            
+            if (!canEdit) {
+                closeAnnotationModal();
+                return;
+            }
+            
+            const evidenceId = currentEvidenceId || window.currentEditingEvidenceId;
+            if (!evidenceId) {
+                alert('Error: No hay evidencia seleccionada');
+                return;
+            }
+            
+            try {
+                const annotationHtml = quillAnnotation ? quillAnnotation.root.innerHTML : '';
+                
+                const response = await fetch(`/api/evidence/${evidenceId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ annotation: annotationHtml })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.success) {
+                    closeAnnotationModal();
+                    await loadEvidence();
+                    if (typeof showNotification === 'function') {
+                        showNotification('Anotación guardada correctamente', 'success');
+                    } else {
+                        alert('✅ Anotación guardada correctamente');
+                    }
+                } else {
+                    alert('❌ Error: ' + (data.error || 'Error desconocido'));
+                }
+            } catch (error) {
+                console.error('Error saving annotation:', error);
+                alert('❌ Error al guardar: ' + error.message);
+            }
+        }
+
+        function downloadUrl(url) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }
+
+        function blobToDataUrl(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        function saveOtsViaExtension(payload) {
+            return new Promise((resolve) => {
+                let settled = false;
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(result || { ok: false, error: 'sin respuesta' });
+                };
+
+                const message = {
+                    action: 'saveOtsToCaptureFolder',
+                    folder: payload.folder || '',
+                    evidenceId: payload.evidenceId,
+                    files: payload.files || []
+                };
+
+                const extId = document.documentElement.getAttribute('data-scic-ext');
+                if (extId && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    try {
+                        chrome.runtime.sendMessage(extId, message, (response) => {
+                            const err = chrome.runtime && chrome.runtime.lastError && chrome.runtime.lastError.message;
+                            if (!err && response) {
+                                finish(response);
+                                return;
+                            }
+                            postToContentScript(message, finish);
+                        });
+                        setTimeout(() => {
+                            if (!settled) finish({ ok: false, error: 'La extension no respondio. Recarga la extension en chrome://extensions y luego recarga este dashboard (F5).' });
+                        }, 20000);
+                        return;
+                    } catch (e) {
+                        // seguir por postMessage
+                    }
+                }
+
+                postToContentScript(message, finish);
+                setTimeout(() => {
+                    if (!settled) {
+                        const hasBridge = Boolean(document.documentElement.getAttribute('data-scic-ext'));
+                        finish({
+                            ok: false,
+                            error: hasBridge
+                                ? 'La extension no respondio. Recarga la extension y esta pagina.'
+                                : 'Este dashboard no tiene la extension inyectada. Abri el panel en Chrome con la extension activada y recarga (F5).'
+                        });
+                    }
+                }, 20000);
+            });
+        }
+
+        function postToContentScript(message, finish) {
+            const requestId = 'ots-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+            function onMsg(event) {
+                if (event.source !== window || !event.data || event.data.source !== 'scic-extension' || event.data.requestId !== requestId) {
+                    return;
+                }
+                window.removeEventListener('message', onMsg);
+                finish(event.data.result || { ok: false });
+            }
+            window.addEventListener('message', onMsg);
+            window.postMessage(Object.assign({ source: 'scic-dashboard', requestId: requestId }, message), '*');
+        }
+
+        async function saveOtsIntoOriginalFolder(evidenceId, folder) {
+            const files = [];
+            const otsResp = await fetch(`/api/evidence/${evidenceId}/ots`);
+            if (otsResp.ok) {
+                files.push({
+                    name: 'captura.ots',
+                    dataUrl: await blobToDataUrl(await otsResp.blob())
+                });
+            }
+            const receiptResp = await fetch(`/api/evidence/${evidenceId}/ots/receipt`);
+            if (receiptResp.ok) {
+                files.push({
+                    name: 'OpenTimestamps-recibo.txt',
+                    dataUrl: await blobToDataUrl(await receiptResp.blob())
+                });
+            }
+            if (!files.length) {
+                return { ok: false, error: 'No se pudo leer el .ots del servidor' };
+            }
+            return saveOtsViaExtension({ evidenceId, folder, files });
+        }
+
+        async function downloadOtsToFolder(id) {
+            const item = evidenceData.find((row) => row.id === id) || {};
+            const saved = await saveOtsIntoOriginalFolder(id, item.download_folder);
+            alert(saved.ok
+                ? ('Guardado en la carpeta de la captura: ' + (saved.folder || item.download_folder))
+                : ('No se pudo guardar en esa carpeta: ' + (saved.error || '')));
+        }
+
+        async function stampOts(id) {
+            try {
+                const response = await fetch(`/api/evidence/${id}/ots`, { method: 'POST' });
+                const data = await response.json();
+                if (!data.success) {
+                    alert('Error OTS: ' + (data.error || 'no se pudo sellar'));
+                    return;
+                }
+                await loadEvidence();
+                const item = evidenceData.find((row) => row.id === id) || {};
+                const folder = data.download_folder || item.download_folder;
+                const saved = await saveOtsIntoOriginalFolder(id, folder);
+                const calendars = (data.calendars || []).join('\n');
+                alert(
+                    'Se genero la prueba OpenTimestamps en el servidor.\n\n' +
+                    (saved.ok
+                        ? ('Quedo en la misma carpeta de la captura: ' + (saved.folder || folder) + '\n(captura.ots y OpenTimestamps-recibo.txt)\n')
+                        : ('No se pudo guardar en esa carpeta: ' + (saved.error || '') + '\nRecarga la extension, recarga este dashboard y volve a sellar.\n')) +
+                    'Estado: ' + (data.status === 'confirmed' ? 'sello de tiempo confirmado' : 'pendiente de confirmacion') + '\n' +
+                    'SHA256: ' + (data.sha256 || '') +
+                    (calendars ? ('\n\nCalendarios:\n' + calendars) : '')
+                );
+            } catch (error) {
+                alert('Error al sellar OpenTimestamps: ' + error.message);
+            }
+        }
+
+        async function verifyOts(id) {
+            try {
+                await fetch(`/api/evidence/${id}/ots/upgrade`, { method: 'POST' });
+                const response = await fetch(`/api/evidence/${id}/ots/verify`, { method: 'POST' });
+                const data = await response.json();
+                if (!data.success) {
+                    alert('Error: ' + (data.error || 'no se pudo validar'));
+                    return;
+                }
+                await loadEvidence();
+                const item = evidenceData.find((row) => row.id === id) || {};
+                await saveOtsIntoOriginalFolder(id, data.download_folder || item.download_folder);
+                alert(
+                    (data.message || 'Validacion lista') + '\n\n' +
+                    'Fecha de consulta: ' + (data.stamped_at || item.ots_stamped_at || '-') + '\n' +
+                    'Fecha de validacion: ' + (data.verified_at || '-')
+                );
+            } catch (error) {
+                alert('Error al verificar OpenTimestamps');
+            }
+        }
+
+        async function deleteEvidence(id) {
+            if (!canEdit) {
+                alert('⚠️ No tienes permisos de edición');
+                return;
+            }
+            
+            if (!confirm('¿Eliminar esta evidencia?')) return;
+            try {
+                const response = await fetch(`/api/evidence/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    loadEvidence();
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting evidence:', error);
+            }
+        }
+
+        function showPreview() {
+            const content = document.getElementById('previewContent');
+            let html = `<div class="space-y-6" style="font-family:${metadata.font_family || 'Arial'}; font-size:${metadata.font_size || 11}px; line-height:${metadata.line_spacing || 14}px;"><div class="text-center"><h1 class="text-3xl font-bold text-blue-800 mb-4">${metadata.title || ''}</h1></div>`;
+            if (metadata.asunto) html += `<div><strong>ASUNTO:</strong> ${metadata.asunto}</div>`;
+            if (metadata.fecha) html += `<div><strong>FECHA:</strong> ${metadata.fecha}</div>`;
+            html += `<div><strong>Zona horaria:</strong> ${tzLabel(currentTzOffset)}</div>`;
+            html += `<div><strong>Horas:</strong> UTC y ${tzLabel(currentTzOffset)}</div>`;
+            if (metadata.informacion) html += `<div><strong>INFORMACIÓN:</strong><div class="mt-2 prose max-w-none">${metadata.informacion}</div></div>`;
+            evidenceData.forEach((item, idx) => {
+                html += `<div class="border p-4 rounded mb-4 bg-white">
+                <table class="w-full text-sm border-collapse border border-gray-300 mb-3">
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1 w-40">Modo:</td><td class="border border-gray-300 px-2 py-1">${item.capture_mode === 'area' ? 'Area seleccionada' : item.capture_mode === 'full' ? 'Pagina completa' : 'Area visible'}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1 w-40">Fecha de captura:</td><td class="border border-gray-300 px-2 py-1">${formatDualTime(item.timestamp)}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">Zona horaria:</td><td class="border border-gray-300 px-2 py-1">UTC y ${tzLabel(currentTzOffset)}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">Fuente de hora:</td><td class="border border-gray-300 px-2 py-1">${item.time_source || 'N/A'}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">URL:</td><td class="border border-gray-300 px-2 py-1 break-all">${item.url}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">IP usuario:</td><td class="border border-gray-300 px-2 py-1">${item.user_ip || 'N/A'}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">IP del sitio:</td><td class="border border-gray-300 px-2 py-1">${item.server_ip || 'N/A'}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">MD5:</td><td class="border border-gray-300 px-2 py-1">${item.md5 || 'N/A'}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">SHA1:</td><td class="border border-gray-300 px-2 py-1">${item.sha1 || 'N/A'}</td></tr>
+                    <tr><td class="font-bold border border-gray-300 px-2 py-1">SHA256:</td><td class="border border-gray-300 px-2 py-1 break-all">${item.sha256 || 'N/A'}</td></tr>
+                </table>
+                ${item.annotation ? `<div class="bg-yellow-50 p-2 rounded mb-3 prose prose-sm max-w-none">${item.annotation}</div>` : ''}
+                ${item.filename ? `<img src="/evidence/${item.filename}" class="max-w-full rounded" />` : ''}</div>`;
+            });
+            if (metadata.conclusiones) html += `<hr class="my-6"><h3 class="text-base font-bold text-black mb-4">CONCLUSIONES</h3><div class="prose max-w-none">${metadata.conclusiones}</div>`;
+            html += '</div>';
+            content.innerHTML = html;
+            document.getElementById('previewModal').classList.remove('hidden');
+            document.getElementById('previewModal').classList.add('flex');
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+            document.getElementById('previewModal').classList.remove('flex');
+        }
+
+        async function generatePDFFromPreview(event) {
+            if (evidenceData.length === 0) {
+                alert('No hay evidencias para generar el PDF');
+                return;
+            }
+            
+            // Obtener el botón que disparó el evento
+            const btn = event?.target || document.querySelector('button[onclick*="generatePDFFromPreview"]');
+            
+            if (btn) {
+                const originalText = btn.textContent;
+                const originalDisabled = btn.disabled;
+                
+                btn.textContent = '⏳ Generando...';
+                btn.disabled = true;
+                
+                // Timeout de seguridad
+                const timeoutId = setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = originalDisabled;
+                    alert('⚠️ La generación del PDF está tardando mucho. Por favor, recarga la página si es necesario.');
+                }, 60000);
+                
+                try {
+                    const response = await fetch('/api/generate-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: currentSessionId })
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        let errorMsg = 'Error al generar PDF';
+                        try {
+                            const errorData = await response.json();
+                            errorMsg = errorData.error || errorMsg;
+                        } catch (e) {
+                            errorMsg = `Error HTTP ${response.status}: ${response.statusText}`;
+                        }
+                        throw new Error(errorMsg);
+                    }
+                    
+                    const blob = await response.blob();
+                    
+                    if (!blob || blob.size === 0) {
+                        throw new Error('El PDF generado está vacío');
+                    }
+                    
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `reporte_${new Date().getTime()}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    // Cerrar el modal de vista previa
+                    closePreview();
+                    
+                    alert('✅ PDF generado correctamente');
+                    setTimeout(() => loadReports(), 1000);
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    console.error('Error generating PDF:', error);
+                    alert('❌ Error al generar el PDF: ' + (error.message || 'Error desconocido'));
+                } finally {
+                    // Siempre restaurar el botón
+                    btn.textContent = originalText;
+                    btn.disabled = originalDisabled;
+                }
+            } else {
+                // Si no se encuentra el botón, intentar generar sin actualizar estado
+                try {
+                    const response = await fetch('/api/generate-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: currentSessionId })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Error al generar PDF');
+                    }
+                    
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `reporte_${new Date().getTime()}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    closePreview();
+                    alert('✅ PDF generado correctamente');
+                } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    alert('❌ Error al generar el PDF: ' + (error.message || 'Error desconocido'));
+                }
+            }
+        }
+
+        function openImageModal(imageSrc) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="relative max-w-4xl max-h-full p-4">
+                    <button onclick="this.closest('.fixed').remove()" class="absolute top-2 right-2 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-75 z-10">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                    <img src="${imageSrc}" alt="Evidencia" class="max-w-full max-h-screen rounded shadow-2xl">
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Cerrar al hacer clic fuera de la imagen
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            // Cerrar con ESC
+            const closeOnEsc = (e) => {
+                if (e.key === 'Escape') {
+                    modal.remove();
+                    document.removeEventListener('keydown', closeOnEsc);
+                }
+            };
+            document.addEventListener('keydown', closeOnEsc);
+        }
+
+        async function generatePDF() {
+            if (evidenceData.length === 0) {
+                alert('No hay evidencias para generar el PDF');
+                return;
+            }
+            
+            // Obtener el botón de forma más robusta
+            const btn = event?.target || document.querySelector('button[onclick*="generatePDF"]') || document.getElementById('generatePDFBtn');
+            if (!btn) {
+                alert('Error: No se pudo encontrar el botón');
+                return;
+            }
+            
+            const originalText = btn.textContent;
+            const originalDisabled = btn.disabled;
+            
+            btn.textContent = '⏳ Generando...';
+            btn.disabled = true;
+            
+            // Timeout de seguridad para restaurar el botón si algo falla
+            const timeoutId = setTimeout(() => {
+                btn.textContent = originalText;
+                btn.disabled = originalDisabled;
+                alert('⚠️ La generación del PDF está tardando mucho. Por favor, recarga la página si es necesario.');
+            }, 60000); // 60 segundos timeout
+            
+            try {
+                const response = await fetch('/api/generate-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    let errorMsg = 'Error al generar PDF';
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        errorMsg = `Error HTTP ${response.status}: ${response.statusText}`;
+                    }
+                    throw new Error(errorMsg);
+                }
+                
+                const blob = await response.blob();
+                
+                if (!blob || blob.size === 0) {
+                    throw new Error('El PDF generado está vacío');
+                }
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `reporte_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                alert('✅ PDF generado correctamente');
+                setTimeout(() => loadReports(), 1000);
+            } catch (error) {
+                clearTimeout(timeoutId);
+                console.error('Error generating PDF:', error);
+                alert('❌ Error al generar el PDF: ' + (error.message || 'Error desconocido'));
+            } finally {
+                // Siempre restaurar el botón
+                btn.textContent = originalText;
+                btn.disabled = originalDisabled;
+            }
+        }
+
+        async function clearAll() {
+            if (!canEdit) {
+                alert('⚠️ No tienes permisos de edición');
+                return;
+            }
+            
+            if (!confirm('¿Eliminar TODAS las evidencias?')) return;
+            try {
+                const response = await fetch('/api/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    loadEvidence();
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error clearing evidence:', error);
+            }
+        }
+
+        function updateCaseKeyHint(primaryKey, ingestKeys, meta) {
+            const el = document.getElementById('caseIngestHint');
+            if (!el) return;
+            const title = (meta && meta.title) ? meta.title : 'este caso';
+            const key = primaryKey || (ingestKeys[0] && ingestKeys[0].api_key);
+            if (key) {
+                el.textContent = 'Caso abierto: ' + title + ' — API Key de ingesta: ' + key;
+            } else {
+                el.textContent = 'Caso abierto: ' + title + ' — todavía no hay API Key de ingesta.';
+            }
+        }
+
+        function initDraggableModals() {
+            document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+                overlay.addEventListener('mousedown', (e) => {
+                    const handle = e.target.closest('.modal-handle');
+                    if (!handle || e.target.closest('button')) return;
+                    const panel = handle.closest('.modal-panel');
+                    if (!panel) return;
+                    e.preventDefault();
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const baseX = parseFloat(panel.dataset.dragX || '0');
+                    const baseY = parseFloat(panel.dataset.dragY || '0');
+                    panel.style.position = 'relative';
+                    function onMove(ev) {
+                        const dx = ev.clientX - startX;
+                        const dy = ev.clientY - startY;
+                        panel.dataset.dragX = String(baseX + dx);
+                        panel.dataset.dragY = String(baseY + dy);
+                        panel.style.left = (baseX + dx) + 'px';
+                        panel.style.top = (baseY + dy) + 'px';
+                    }
+                    function onUp() {
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                    }
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                });
+            });
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ Copiado al portapapeles');
+            });
+        }
+
+        function logout() {
+            if (confirm('¿Cerrar sesión?')) {
+                window.location.href = '/logout';
+            }
+        }
+    </script>
+</body>
+</html>

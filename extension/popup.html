@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Captura con metadatos</title>
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+      background: #f4f5f7;
+      margin: 0;
+    }
+
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 18px;
+      border: 1px solid #e2e8f0;
+    }
+
+    h2 {
+      margin: 0 0 14px 0;
+      color: #1a202c;
+      font-size: 16px;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    button {
+      width: 100%;
+      padding: 11px;
+      background: #2d3748;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1a202c;
+    }
+
+    button:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #4a5568;
+    }
+
+    button.secondary:hover {
+      background: #2d3748;
+    }
+
+    button.settings {
+      background: #718096;
+    }
+
+    button.settings:hover {
+      background: #4a5568;
+    }
+
+    #status {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 12px;
+      color: #666;
+      min-height: 18px;
+    }
+
+    .spinner {
+      border: 3px solid #edf2f7;
+      border-top: 3px solid #2d3748;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      animation: spin 1s linear infinite;
+      margin: 10px auto;
+      display: none;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .success {
+      color: #276749;
+      font-weight: bold;
+    }
+
+    .error {
+      color: #c53030;
+      font-weight: bold;
+    }
+
+    .divider {
+      height: 1px;
+      background: #e2e8f0;
+      margin: 14px 0;
+    }
+
+    .info-text {
+      font-size: 11px;
+      color: #718096;
+      text-align: left;
+      margin-top: 10px;
+      line-height: 1.45;
+    }
+
+    .mode-label {
+      font-size: 12px;
+      color: #4a5568;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    .mode-switch {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .mode-switch button {
+      flex: 1;
+      padding: 8px;
+      font-size: 12px;
+      background: #edf2f7;
+      color: #4a5568;
+    }
+
+    .mode-switch button:hover {
+      background: #e2e8f0;
+    }
+
+    .mode-switch button.active {
+      background: #2d3748;
+      color: white;
+    }
+
+    .mode-hint {
+      font-size: 11px;
+      color: #718096;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    #settingsPanel {
+      display: none;
+      margin-top: 10px;
+    }
+
+    #settingsPanel input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      margin: 4px 0 10px;
+      border: 1px solid #cbd5e0;
+      border-radius: 5px;
+      font-size: 12px;
+    }
+
+    #settingsPanel label {
+      font-size: 11px;
+      color: #4a5568;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Captura con metadatos</h2>
+
+    <div class="button-group">
+      <button id="captureVisibleBtn">Captura visible</button>
+      <button id="captureAreaBtn" class="secondary">Seleccionar area</button>
+      <button id="captureFullBtn" class="secondary">Pagina completa</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="mode-label">Destino</div>
+    <div class="mode-switch">
+      <button type="button" id="modeLocalBtn">Solo local</button>
+      <button type="button" id="modeServerBtn">Tambien servidor</button>
+    </div>
+    <div class="mode-hint" id="modeHint"></div>
+
+    <button id="settingsBtn" class="settings">Servidor y API Key</button>
+    <div id="settingsPanel">
+      <label for="timezoneSelect">Zona horaria (UTC + zona)</label>
+      <select id="timezoneSelect"></select>
+      <label for="serverUrlInput">URL del servidor</label>
+      <input id="serverUrlInput" type="text" placeholder="URL del dashboard (sin barra final)">
+      <label for="apiKeyInput">API Key</label>
+      <input id="apiKeyInput" type="password" placeholder="API Key (solo modo servidor)">
+      <button type="button" id="saveSettingsBtn" class="settings">Guardar</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="spinner" id="spinner"></div>
+    <div id="status"></div>
+
+    <div class="info-text">
+      Visible: viewport actual.<br>
+      Area: recorte manual.<br>
+      Completa: recorre la pagina y une las tomas.<br>
+      Siempre genera JPEG, TXT y PDF en Descargas. La hora se consulta a un servidor externo.
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

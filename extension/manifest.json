@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Captura con metadatos",
+  "version": "2.5",
+  "description": "Captura visible, area o pagina completa, genera PDF local con hashes, hora de servidor y opcionalmente reporta a un servidor",
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "tabs",
+    "scripting",
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost/*",
+      "http://localhost:5000/*",
+      "http://127.0.0.1/*",
+      "http://127.0.0.1:5000/*"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["ots-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end",
+      "all_frames": false,
+      "match_about_blank": false
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

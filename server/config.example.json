@@ -1,0 +1,16 @@
+{
+  "ad_enabled": false,
+  "ad_server": "",
+  "ad_domain": "",
+  "ad_base_dn": "",
+  "network_reports_server": "",
+  "network_reports_share": "",
+  "network_reports_subfolder": "",
+  "timezone_offset": -3,
+  "dashboard_origins": [],
+  "listen_host": "0.0.0.0",
+  "listen_port": 5000,
+  "admin_username": "admin",
+  "admin_password": "CAMBIAR_ESTA_CLAVE",
+  "debug": false
+}
