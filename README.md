@@ -1,8 +1,8 @@
-# SCIC — Sistema de Captura con Integridad y Custodia (versión con servidor)
+# SCIC — Sistema de Captura y preservacion de evidencia digital para trabajo con equipo de colaboradores -ingestigadores- (versión con servidor)
 
 Herramienta de **preservación de evidencia digital de fuentes abiertas** para prácticas de OSINT/SOCMINT. Combina una extensión de Chrome/Edge que captura páginas web con metadatos técnicos y hashes, y un servidor Flask que centraliza los casos, recalcula la integridad, sella con **OpenTimestamps** (blockchain de Bitcoin) y genera el informe PDF del caso.
 
-> Proyecto con fines exclusivamente educativos. ¿Necesitás trabajar sin infraestructura? Mirá la versión **[SCIC-local](https://github.com/gonzalocatanzariti/SCIC-local)**.
+Proyecto con fines exclusivamente educativos. ¿Necesitás trabajar sin infraestructura? Mirá la versión **[SCIC-local](https://github.com/gonzalocatanzariti/SCIC-local)**.
 
 ## Componentes
 
